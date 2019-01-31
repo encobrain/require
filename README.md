@@ -1,4 +1,4 @@
-# Simple request module for write fronend code in module style
+# Simple request module for write frontend code in module style
 
 Example of usage see in examples folder
 
