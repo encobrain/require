@@ -1,0 +1,15 @@
+{
+    "name": "require",
+    "version": "0.0.1",
+    "author": {
+        "name": "encobrain",
+        "email": "encobrain@gmail.com"
+    },
+    "license": "MIT",
+    "scripts": {
+        "start": "serve ."
+    },
+    "devDependencies": {
+        "serve": "^10.1.1"
+    }
+}
