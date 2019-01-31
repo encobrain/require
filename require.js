@@ -148,6 +148,20 @@
 
                 globalModules[path] = new AwaitDone();
 
+                if (/^http.*\.css$/.test(path)) {
+                    var link = document.createElement('link');
+
+                    link.rel = 'stylesheet';
+                    link.href = path;
+                    link.setAttribute('created-by', 'require');
+
+                    (documentHead || documentBody).appendChild(link);
+
+                    done(index, null);
+
+                    return;
+                }
+
                 xhr.open('GET', path, true);
 
                 function checkState () {
@@ -209,7 +223,7 @@
                             }
 
                             var cb = resolveRequire.called ? processFn : function () {
-                                done(index, processFn.apply(window, arguments));
+                                done(index, processFn ? processFn.apply(window, arguments) : null);
                             };
 
                             resolveRequire.called = true;
