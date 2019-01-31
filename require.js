@@ -147,7 +147,7 @@
                     return;
                 }
 
-                if (/^http.*\.css$/.test(path)) {
+                if (/^\.css$/.test(path)) {
                     var link = document.createElement('link');
 
                     link.rel = 'stylesheet';
@@ -181,25 +181,6 @@
 
                         done(index, err);
                         return
-                    }
-
-                    if (/\.css$/.test(path)) {
-                        var style = document.createElement('style');
-                        style.type = 'text/css';
-
-                        style.setAttribute('created-by', 'require');
-
-                        if (style.styleSheet) {
-                            // This is required for IE8 and below.
-                            style.styleSheet.cssText = xhr.responseText;
-                        } else {
-                            style.appendChild(document.createTextNode(xhr.responseText));
-                        }
-
-                        (documentHead || documentBody).appendChild(style);
-
-                        done(index, null);
-                        return;
                     }
 
                     if (/\.js$/.test(path)) {
