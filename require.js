@@ -103,25 +103,25 @@
 
         var exports = []; 
 
-        function done (index, exportData) {
+        function done(index, exportData) {
             exports[index] = exportData;
 
             var path = modules[index];
 
             var awaits = globalModules[path];
-            
+
             globalModules[path] = exportData;
 
-            if (awaits instanceof AwaitDone) 
-                awaits.done(exportData);   
+            if (awaits instanceof AwaitDone)
+                awaits.done(exportData);
 
             activeReqsCount--;
 
-            if (activeReqsCount <= 0 && processFn) 
+            if (activeReqsCount <= 0 && processFn)
                 processFn.apply(window, exports);
         }
 
-        for (var mi=0; mi < activeReqsCount; mi++) {
+        for (var mi = 0; mi < activeReqsCount; mi++) {
 
             var path = modules[mi];
 
@@ -130,23 +130,22 @@
 
             modules[mi] = path;
 
-            function get (index) {
-                var xhr = getXmlHttp();
+            get(mi);
+
+            function get(index) {
 
                 var path = modules[index];
 
                 if (path in globalModules) {
 
                     if (globalModules[path] instanceof AwaitDone) {
-                        globalModules[path].add(function (exports){
+                        globalModules[path].add(function (exports) {
                             done(index, exports);
                         });
                     } else done(index, globalModules[path]);
- 
+
                     return;
                 }
-
-                globalModules[path] = new AwaitDone();
 
                 if (/^http.*\.css$/.test(path)) {
                     var link = document.createElement('link');
@@ -157,17 +156,21 @@
 
                     (documentHead || documentBody).appendChild(link);
 
-                    done(index, null);
+                    setTimeout(function () { done(index, null) }, 0);
 
                     return;
                 }
 
+                globalModules[path] = new AwaitDone();
+
+                var xhr = getXmlHttp();
+
                 xhr.open('GET', path, true);
 
-                function checkState () {
-                    if (xhr.readyState != 4) return setTimeout(checkState,10);
+                function checkState() {
+                    if (xhr.readyState != 4) return setTimeout(checkState, 10);
 
-                    (console.debug || console.log)("[require] " + path + '. Request done: status='+xhr.status+' statusText:'+xhr.statusText);
+                    (console.debug || console.log)("[require] " + path + '. Request done: status=' + xhr.status + ' statusText:' + xhr.statusText);
 
                     if (xhr.status != 200) {
                         var err = new Error("Fail get module " + path);
@@ -184,7 +187,7 @@
                         var style = document.createElement('style');
                         style.type = 'text/css';
 
-                        style.setAttribute('created-by','require');
+                        style.setAttribute('created-by', 'require');
 
                         if (style.styleSheet) {
                             // This is required for IE8 and below.
@@ -195,28 +198,26 @@
 
                         (documentHead || documentBody).appendChild(style);
 
-                        globalModules[path] = null;
-
                         done(index, null);
                         return;
                     }
 
                     if (/\.js$/.test(path)) {
-                        let dir = path.substr(0,path.lastIndexOf('/'));
+                        let dir = path.substr(0, path.lastIndexOf('/'));
 
                         var evalFn = new Function('require', xhr.responseText);
 
-                        function resolveRequire (modules, processFn) {
+                        function resolveRequire(modules, processFn) {
                             if (modules instanceof Array) {
-                                for (var i=0;i<modules.length;i++) {
-                                    var relative = 
-                                        !/^http/.test(modules[i]) && 
+                                for (var i = 0; i < modules.length; i++) {
+                                    var relative =
+                                        !/^http/.test(modules[i]) &&
                                         /^((?:\.\/)?(?:\.\.\/)*)([^\/].*)$/.exec(modules[i]);
 
                                     if (relative) {
                                         var parts = dir.split("/");
                                         var steps = relative[1].split("/"); steps.pop();
-                                        while ( steps.pop() == ".." ) parts.pop(); 
+                                        while (steps.pop() == "..") parts.pop();
                                         modules[i] = parts.join("/") + "/" + relative[2];
                                     }
                                 }
@@ -228,12 +229,14 @@
 
                             resolveRequire.called = true;
 
-                            require(modules, cb);   
+                            require(modules, cb);
                         }
 
-                        evalFn(resolveRequire);
-
-                        console.log(path, index, resolveRequire.called);
+                        try {
+                            evalFn(resolveRequire);
+                        } catch (e) {
+                            console.error("[require] " + path, e);
+                        }
 
                         if (!resolveRequire.called) done(index, null);
 
@@ -249,8 +252,6 @@
 
                 setTimeout(checkState, 10);
             }
-            
-            get(mi)       
         }
 
         if (activeReqsCount <= 0) done(-1, null);
