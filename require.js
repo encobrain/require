@@ -147,7 +147,7 @@
                     return;
                 }
 
-                if (/^http.*\.css$/.test(path)) {
+                if (/^\.css$/.test(path)) {
                     var link = document.createElement('link');
 
                     link.rel = 'stylesheet';
