@@ -60,13 +60,23 @@
 
     function AwaitDone () {
         this.awaits = [];
+        this._isDone = false;
+        this._doneArgs = [];
     }
 
     AwaitDone.prototype.add = function (cb) {
+        if (this._isDone) return cb.apply(window, this._doneArgs);
+
         this.awaits.push(cb);
     }
 
     AwaitDone.prototype.done = function () {
+        if (this._isDone) 
+            throw new Error("Already done");
+
+        this._isDone = true;
+        this._doneArgs = arguments;
+
         for (var i=0; i<this.awaits.length; i++)
             this.awaits[i].apply(window, arguments);
     }
@@ -86,6 +96,7 @@
      *                                  - Object. if require module style 
      *                                  - null. if not require module style  
      *                               - other => String
+     * @returns {AwaitDone}
      */
     function require (modules, processFn) {
         if (typeof modules === 'function') {
@@ -99,11 +110,21 @@
         if (processFn && typeof processFn !== 'function')
             throw new Error("Incorrect use. processFn shuld have Function type");
 
+        var awaitDone = new AwaitDone();
+
         var activeReqsCount = modules.length;
 
         var exports = []; 
 
         function done(index, exportData) {
+            if (exportData instanceof AwaitDone) {
+                exportData.add(function (exports){
+                    done(index, exports);
+                });
+
+                return;
+            }
+
             exports[index] = exportData;
 
             var path = modules[index];
@@ -117,8 +138,9 @@
 
             activeReqsCount--;
 
-            if (activeReqsCount <= 0 && processFn)
-                processFn.apply(window, exports);
+            if (activeReqsCount <= 0) {
+                awaitDone.done(processFn && processFn.apply(window, exports));
+            }
         }
 
         for (var mi = 0; mi < activeReqsCount; mi++) {
@@ -188,7 +210,7 @@
 
                         var evalFn = new Function('require', xhr.responseText);
 
-                        function resolveRequire(modules, processFn) {
+                        function resolveRequire (modules, processFn) {
                             if (modules instanceof Array) {
                                 for (var i = 0; i < modules.length; i++) {
                                     var relative =
@@ -205,12 +227,12 @@
                             }
 
                             var cb = resolveRequire.called ? processFn : function () {
-                                done(index, processFn ? processFn.apply(window, arguments) : null);
+                                done(index, processFn && processFn.apply(window, arguments));
                             };
 
                             resolveRequire.called = true;
 
-                            require(modules, cb);
+                            return require(modules, cb);
                         }
 
                         try {
@@ -236,6 +258,8 @@
         }
 
         if (activeReqsCount <= 0) done(-1, null);
+
+        return awaitDone;
     }
 
     require.Error = Error;
