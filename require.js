@@ -23,12 +23,15 @@
     if (!xhrSupport) {
         alert("Your browser don't support XMLHttpRequest technology");
 
-        window.require = function () {}
+        window.require = function () { }
         return;
     }
 
-    var documentHead = document.head || document.getElementsByTagName('head')[0];
-    var documentBody = document.body || document.getElementsByTagName('head')[0];
+    var head = document.head || document.getElementsByTagName('head')[0];
+
+    function appendChild(child) {
+        head.appendChild(child);
+    }
 
     /**
      * Creates require error
@@ -58,34 +61,33 @@
 
     var basePath = window.location.pathname.substr(0, window.location.pathname.lastIndexOf("/"));
 
-    function AwaitDone () {
-        this.awaits = [];
+    function AwaitDone(path) {
+        this.path = path;
+        this._awaits = [];
         this._isDone = false;
         this._doneArgs = [];
     }
 
     AwaitDone.prototype.add = function (cb) {
-        if (this._isDone) return cb.apply(window, this._doneArgs);
+        if (this._isDone) return cb.call(window, this.path, this._exports);
 
-        this.awaits.push(cb);
+        this._awaits.push(cb);
     }
 
-    AwaitDone.prototype.done = function () {
-        if (this._isDone) 
+    AwaitDone.prototype.done = function (exports) {
+        if (this._isDone)
             throw new Error("Already done");
 
         this._isDone = true;
-        this._doneArgs = arguments;
+        this._exports = exports;
 
-        for (var i=0; i<this.awaits.length; i++)
-            this.awaits[i].apply(window, arguments);
+        for (var i = 0; i < this._awaits.length; i++)
+            this._awaits[i].call(window, this.path, exports);
     }
-
-    var globalModules = {};
 
     /**
      * Describe module with requires
-     * @param {string[]} [modules] Required modules paths. Can be:
+     * @param {string[]} [paths]   Required modules paths. Can be:
      *                             - relative (path, /path, ./path, ../path). Relative will be towards to current module dir
      *                             - global path (http://path, https://path) 
      * @param {Function} [processFn] Function for precessing module. May return object for interract with other modules
@@ -98,173 +100,182 @@
      *                               - other => String
      * @returns {AwaitDone}
      */
-    function require (modules, processFn) {
-        if (typeof modules === 'function') {
-            processFn = modules;
-            modules = [];
-        }    
+    function require(paths, processFn) {
+        if (typeof paths === 'function') {
+            processFn = paths;
+            paths = [];
+        }
 
-        if (!(modules instanceof Array)) 
+        if (!(paths instanceof Array))
             throw new Error("Incorrect use. modules should have string[] type");
 
         if (processFn && typeof processFn !== 'function')
             throw new Error("Incorrect use. processFn shuld have Function type");
 
-        var awaitDone = new AwaitDone();
+        var awaits = new AwaitDone();
 
-        var activeReqsCount = modules.length;
+        var modules = [];
+        var waits = paths.length;
 
-        var exports = []; 
+        function gotModule(path, exports) {
+            modules[paths.indexOf(path)] = exports;
 
-        function done(index, exportData) {
-            if (exportData instanceof AwaitDone) {
-                exportData.add(function (exports){
-                    done(index, exports);
-                });
+            if (--waits > 0) return;
 
-                return;
-            }
+            exports = processFn && processFn.apply(window, modules);
 
-            exports[index] = exportData;
-
-            var path = modules[index];
-
-            var awaits = globalModules[path];
-
-            globalModules[path] = exportData;
-
-            if (awaits instanceof AwaitDone)
-                awaits.done(exportData);
-
-            activeReqsCount--;
-
-            if (activeReqsCount <= 0) {
-                awaitDone.done(processFn && processFn.apply(window, exports));
-            }
+            if (exports instanceof AwaitDone) exports.add(function (path, exports) {
+                awaits.done(exports);
+            });
+            else awaits.done(exports);
         }
 
-        for (var mi = 0; mi < activeReqsCount; mi++) {
-
-            var path = modules[mi];
+        for (var pi = 0; pi < paths.length; pi++) {
+            var path = paths[pi];
 
             if (path.indexOf(basePath) !== 0 && !/^http/.test(path))
                 path = basePath + (path[0] == '/' ? '' : '/') + path;
 
-            modules[mi] = path;
+            paths[pi] = path;
 
-            get(mi);
-
-            function get(index) {
-
-                var path = modules[index];
-
-                if (path in globalModules) {
-
-                    if (globalModules[path] instanceof AwaitDone) {
-                        globalModules[path].add(function (exports) {
-                            done(index, exports);
-                        });
-                    } else done(index, globalModules[path]);
-
-                    return;
-                }
-
-                if (/\.css$/.test(path)) {
-                    var link = document.createElement('link');
-
-                    link.rel = 'stylesheet';
-                    link.href = path;
-                    link.setAttribute('created-by', 'require');
-
-                    (documentHead || documentBody).appendChild(link);
-
-                    setTimeout(function () { done(index, null) }, 0);
-
-                    return;
-                }
-
-                globalModules[path] = new AwaitDone();
-
-                var xhr = getXmlHttp();
-
-                xhr.open('GET', path, true);
-
-                function checkState() {
-                    if (xhr.readyState != 4) return setTimeout(checkState, 10);
-
-                    (console.debug || console.log)("[require] " + path + '. Request done: status=' + xhr.status + ' statusText:' + xhr.statusText);
-
-                    if (xhr.status != 200) {
-                        var err = new Error("Fail get module " + path);
-
-                        err.statusCode = xhr.statusCode;
-                        err.statusText = xhr.statusText;
-                        err.responseText = xhr.responseText;
-
-                        done(index, err);
-                        return
-                    }
-
-                    if (/\.js$/.test(path)) {
-                        let dir = path.substr(0, path.lastIndexOf('/'));
-
-                        var evalFn = new Function('require', xhr.responseText);
-
-                        function resolveRequire (modules, processFn) {
-                            if (modules instanceof Array) {
-                                for (var i = 0; i < modules.length; i++) {
-                                    var relative =
-                                        !/^http/.test(modules[i]) &&
-                                        /^((?:\.\/)?(?:\.\.\/)*)([^\/].*)$/.exec(modules[i]);
-
-                                    if (relative) {
-                                        var parts = dir.split("/");
-                                        var steps = relative[1].split("/"); steps.pop();
-                                        while (steps.pop() == "..") parts.pop();
-                                        modules[i] = parts.join("/") + "/" + relative[2];
-                                    }
-                                }
-                            }
-
-                            var cb = resolveRequire.called ? processFn : function () {
-                                done(index, processFn && processFn.apply(window, arguments));
-                            };
-
-                            resolveRequire.called = true;
-
-                            return require(modules, cb);
-                        }
-
-                        try {
-                            evalFn(resolveRequire);
-                        } catch (e) {
-                            console.error("[require] " + path, e);
-                        }
-
-                        if (!resolveRequire.called) done(index, null);
-
-                        return;
-                    }
-
-                    done(index, xhr.responseText);
-                }
-
-                (console.debug || console.log)("[require] " + path + '. Requesting...');
-
-                xhr.send(null);
-
-                setTimeout(checkState, 10);
-            }
+            getModule(path, gotModule);
         }
 
-        if (activeReqsCount <= 0) done(-1, null);
-
-        return awaitDone;
+        return awaits;
     }
 
     require.Error = Error;
 
-
     window.require = require;
+
+    //  ======================================
+
+    var modulesCache = {};
+
+    function getModule(path, cb) {
+        var awaits = modulesCache[path];
+
+        if (!awaits) {
+            awaits = modulesCache[path] = new AwaitDone(path);
+
+            getModuleDone(awaits);
+        }
+
+        awaits.add(cb);
+    }
+
+
+    function getModuleDone(awaits) {
+
+        var path = awaits.path;
+
+        if (/\.css$/.test(path)) {
+            var link = document.createElement('link');
+
+            link.rel = 'stylesheet';
+            link.href = path;
+            link.setAttribute('created-by', 'require');
+
+            appendChild(link);
+
+            awaits.done(null);
+
+            return;
+        }
+
+        (console.debug || console.log)("[require] " + path + ' ...');
+
+        if (/^http.*\.js$/.test(path)) {
+            var script = document.createElement('script');
+            script.setAttribute("created-by", "require");
+            script.src = path;
+
+            script.onload = function () {
+                (console.debug || console.log)("[require] ... " + path + " : OK ");
+                awaits.done(null);
+            };
+
+            script.onerror = function () {
+                console.error("[require] ... " + path + " : ERROR ");
+                awaits.done(null);
+            };
+
+            appendChild(script);
+
+            return;
+        }
+
+        var xhr = getXmlHttp();
+
+        xhr.open('GET', path, true);
+
+        xhr.send(null);
+
+        checkState();
+
+        function checkState() {
+            if (xhr.readyState != 4) return setTimeout(checkState, 0);
+
+            (console.debug || console.log)("[require] ... " + path + " : " + xhr.status + " " + xhr.statusText);
+
+            if (xhr.status != 200) {
+                var err = new Error("Fail get module " + path);
+
+                err.statusCode = xhr.statusCode;
+                err.statusText = xhr.statusText;
+                err.responseText = xhr.responseText;
+
+                awaits.done(err);
+                return
+            }
+
+            if (!/\.js$/.test(path)) {
+                awaits.done(xhr.responseText);
+                return;
+            }
+
+            let dir = path.substr(0, path.lastIndexOf('/'));
+
+            var evalFn = new Function(/^http/.test(path) ? '' : 'require', "// module: " + path + "\n\n" + xhr.responseText);
+
+            function resolveRequire(modules, processFn) {
+                if (modules instanceof Array) {
+                    for (var i = 0; i < modules.length; i++) {
+                        var relative =
+                            !/^http/.test(modules[i]) &&
+                            /^((?:\.\/)?(?:\.\.\/)*)([^\/].*)$/.exec(modules[i]);
+
+                        if (relative) {
+                            var parts = dir.split("/");
+                            var steps = relative[1].split("/"); steps.pop();
+                            while (steps.pop() == "..") parts.pop();
+                            modules[i] = parts.join("/") + "/" + relative[2];
+                        }
+                    }
+                }
+
+                var cb = resolveRequire.called ? processFn : function () {
+                    var exports = processFn && processFn.apply(window, arguments);
+
+                    if (exports instanceof AwaitDone) exports.add(function (path, exports) {
+                        awaits.done(exports);
+                    });
+                    else awaits.done(exports);
+                };
+
+                resolveRequire.called = true;
+
+                return require(modules, cb);
+            }
+
+            evalFn.call(window, resolveRequire);
+
+            // try {  } 
+            // catch (e) { console.error("[require] " + path, e); }
+
+            if (!resolveRequire.called) awaits.done(null);
+        }
+    }
+
 })();
 
