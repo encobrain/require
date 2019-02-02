@@ -141,6 +141,8 @@
             getModule(path, gotModule);
         }
 
+        if (!paths.length) setTimeout(gotModule, 0);
+
         return awaits;
     }
 
@@ -239,6 +241,11 @@
             var evalFn = new Function(/^http/.test(path) ? '' : 'require', "// module: " + path + "\n\n" + xhr.responseText);
 
             function resolveRequire(modules, processFn) {
+                if (typeof modules === "function") {
+                    processFn = modules;
+                    modules = [];
+                }
+
                 if (modules instanceof Array) {
                     for (var i = 0; i < modules.length; i++) {
                         var relative =
