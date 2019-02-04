@@ -171,6 +171,8 @@
 
         var path = awaits.path;
 
+        (console.debug || console.log)("[require] " + path + ' ...');
+
         if (/\.css$/.test(path)) {
             var link = document.createElement('link');
 
@@ -178,14 +180,22 @@
             link.href = path;
             link.setAttribute('created-by', 'require');
 
-            appendChild(link);
+            link.onload = function () {
+                (console.debug || console.log)("[require] ... " + path + " : OK ");
+                awaits.done(null);
+            }
 
-            awaits.done(null);
+            link.onerror = function () {
+                console.error("[require] ... " + path + " : ERROR ");
+                awaits.done(null);
+            };
+
+            appendChild(link);
 
             return;
         }
 
-        (console.debug || console.log)("[require] " + path + ' ...');
+
 
         if (/^http.*\.js$/.test(path)) {
             var script = document.createElement('script');
