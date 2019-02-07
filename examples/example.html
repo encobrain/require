@@ -3,7 +3,20 @@
         <title>Example of use library</title>
         <script type="text/javascript" src="../require.js"></script>
         <script type="text/javascript">
-            require(['/modules/module2/main.js', '/modules/module3/main.js']);   
+            var g = require.group();
+
+            var module2 = g.require('/modules/module2/main.js');
+            var module3 = g.require('/modules/module3/main.js');
+
+            g.init(init);
+
+            function init () {
+                console.log("Main inited");
+
+                module2.sayHello();
+                module3.sayHello();
+            }
+ 
         </script>
     </head>
 </html>

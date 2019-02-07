@@ -1,20 +1,38 @@
-require([
-    'form.html',
-    'styles.css',  
-    'https://code.jquery.com/jquery-3.3.1.min.js'
-], processFn);
+require('styles.css');
+require('https://code.jquery.com/jquery-3.3.1.min.js');
 
-function processFn (formHtml, cssNull, jQueryNull) {
-    $(formHtml).appendTo('body');
+var formHtml = require('form.html');
 
-    return {
-        sayHello: function () {
-            alert("Hello World!");
-        },
+function init () {
+    $(formHtml.text).appendTo('body');
 
-        sayBlahBlah: function () {
-            alert("Blah Blah...");
-        }
-    }
-
+    console.log("module 1 inited");
 }
+
+// How do exports:
+
+exports.someProperty = 1;
+
+// OR
+
+exports = {
+    sayHello: function () {
+        alert("Hello World!");
+    },
+
+    sayBlahBlah: function () {
+        alert("Blah Blah...");
+    }
+};
+
+// OR
+
+var exports = {
+    sayHello: function () {
+        alert("Hello World!");
+    },
+
+    sayBlahBlah: function () {
+        alert("Blah Blah...");
+    }
+};
