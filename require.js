@@ -48,11 +48,11 @@
     if (!xhrSupport) {
         alert("Your browser doesn't support XMLHttpRequest technology. Please update your browser");
 
-        window.require = function () {}
+        window.require = function () { }
         return;
     }
-        
-    function UniqueKey () {
+
+    function UniqueKey() {
         if (!(this instanceof UniqueKey)) return new UniqueKey();
         this.key = "__UniqueKey_" + Date.now() + "_" + UniqueKey.id++;
     }
@@ -62,7 +62,7 @@
     UniqueKey.prototype.valueOf = UniqueKey.prototype.toString = function () {
         return this.key;
     };
-   
+
 
     var head = document.head || document.getElementsByTagName('head')[0];
 
@@ -72,7 +72,7 @@
      * @param {string} path   Required module path. Can be:
      *                        - relative path (path, /path, ./path, ../path). Relative will be towards to current module dir
      *                        - global path (http://path, https://path)                                               
-     * @param {...ModuleExports} waitForModules Wait for modules before exec module body and init it                               
+     * @param {...ModuleExports} waitForModulesExports Wait for modules before exec module body and init it                               
      * @returns {ModuleExports} Exports of module. May be:
      *                          - .js => 
      *                              - object with exports. if module style
@@ -80,40 +80,43 @@
      *                          - .css => empty
      *                          - other => object with .text property
      */
-    function require (path, waitForModules) {
+    function require(path, waitForModulesExports) {
         if (typeof path !== "string")
-            throw new Error("Incorrect use. path should have <string> type"); 
+            throw new Error("Incorrect use. path should have <string> type");
 
         if (path.indexOf(basePath) !== 0 && !/^http/.test(path))
             path = basePath + (path[0] == '/' ? '' : '/') + path;
 
-        waitForModules = Array.prototype.slice.call(arguments,1);
+        waitForModulesExports = Array.prototype.slice.call(arguments, 1);
 
         var module;
 
-        var wl = waitForModules.length;
+        var wl = waitForModulesExports.length;
 
         if (wl) {
             module = Module();
 
             while (--wl >= 0) {
-                var m = waitForModules[wl] 
-                if (!(m instanceof ModuleExports)) 
+                var me = waitForModulesExports[wl]
+                if (!(me instanceof ModuleExports))
                     throw new Error("Incorrect use. waitForModules[i] should have <ModuleExports> type");
 
-                module.waitForModule(m); 
+                module.waitForModule(me[MODULE_KEY]);
             }
 
             module.onDone(waitsDone);
 
-            function waitsDone () {
+            module = Module();
+
+            function waitsDone() {
                 var origModule = Module(path);
 
                 origModule.onDone(copyExports);
             }
 
-            function copyExports (origModule) {
+            function copyExports(origModule) {
                 module.setExports(origModule.exports);
+                module.init();
             }
 
         } else {
@@ -123,7 +126,7 @@
         return module.exports;
     }
 
-    function GroupRequire () {
+    function GroupRequire() {
         this._waitExports = [];
     }
 
@@ -137,15 +140,15 @@
 
             return exports;
         },
-        
+
         init: function (initFn) {
-            if (typeof initFn !== "function") 
+            if (typeof initFn !== "function")
                 throw new Error("initFn should have <Function> type");
 
             var waitExports = this._waitExports;
 
             var wl = waitExports.length;
-            
+
             while (--wl >= 0) {
                 waitExports[wl][MODULE_KEY].onDone(checkAllDone);
             }
@@ -154,14 +157,14 @@
 
             function checkAllDone() {
                 doneExports++;
-                
+
                 if (doneExports == waitExports.length) initFn();
             }
         }
     };
 
     require.group = function () {
-        return new GroupRequire();   
+        return new GroupRequire();
     };
 
     window.require = require;
@@ -172,11 +175,11 @@
 
     var MODULE_KEY = UniqueKey();
 
-    function ModuleExports (module) {
+    function ModuleExports(module) {
         this[MODULE_KEY] = module;
     }
 
-    function Module (path) {
+    function Module(path) {
         if (path && modulesCache[path]) return modulesCache[path];
         if (!(this instanceof Module)) return new Module(path);
 
@@ -200,16 +203,16 @@
 
             this.waitForModules.push(module);
 
-            module.onDone(function (module) {   
-                self._init();
+            module.onDone(function (module) {
+                self.init();
             });
         },
 
         setExports: function (exports) {
-            if (exports.constructor !== Object)
-                throw new Error("Incorrect exports type. Should be simple object");
+            if (exports.constructor !== Object && exports.constructor !== ModuleExports)
+                throw new Error("Incorrect exports type");
 
-            for (var pn in exports) this.exports[pn] = exports[pn];
+            for (var pn in exports) if (pn != MODULE_KEY) this.exports[pn] = exports[pn];
         },
 
         isDone: function () {
@@ -217,15 +220,13 @@
         },
 
         onDone: function (cb) {
-            if (this.isDone()) return cb(this);
+            if (this.isDone()) return setTimeout(function () { cb(this) }, 0);
 
             this.waiters.push(cb);
         },
 
         start: function () {
-            if (!this.path) return;
-
-            this._loadBodyCode();
+            if (this.path) this._loadBodyCode();
         },
 
         _loadBodyCode: function () {
@@ -241,7 +242,7 @@
                 element = document.createElement('link');
 
                 element.rel = 'stylesheet';
-                element.href = path;            
+                element.href = path;
             } else if (/^http.*\.js$/.test(path)) {
                 element = document.createElement('script');
                 element.src = path;
@@ -275,7 +276,7 @@
 
             checkState();
 
-            function checkState () {
+            function checkState() {
                 if (xhr.readyState != 4) return setTimeout(checkState, 0);
 
                 (console.debug || console.log)("[require] ... " + path + " : " + xhr.status + " " + xhr.statusText);
@@ -296,15 +297,15 @@
             if (/\.js$/.test(path) && this.bodyCode) {
 
                 var bodyFn = new Function(
-                    'require,exports,init', 
-                    "// module: " + path + "\n\n" + 
+                    'require,exports,init',
+                    "// module: " + path + "\n\n" +
                     this.bodyCode + "\n\n" +
                     "return {init: init, exports: exports};"
-                ); 
+                );
 
                 let dir = path.substr(0, path.lastIndexOf('/'));
 
-                function addRequireToWaitModules (path) {
+                function addRequireToWaitModules(path) {
                     var relative =
                         !/^http/.test(path) &&
                         /^((?:\.\/)?(?:\.\.\/)*)([^\/].*)$/.exec(path);
@@ -317,20 +318,20 @@
                     }
 
                     var exports = require.apply(window, arguments);
-                    
+
                     self.waitForModule(exports[MODULE_KEY]);
 
                     return exports;
                 }
 
-                addRequireToWaitModules.group = function () { 
+                addRequireToWaitModules.group = function () {
                     throw new Error("Group require in module not allowed");
-                }; 
+                };
 
-                var ret = bodyFn(addRequireToWaitModules,{});
-                
-                if (!ret.exports || ret.exports.constructor !== Object) 
-                    console.warn("[require] "+path+" : Invalid exports. Should be simple object. Ignoring");
+                var ret = bodyFn(addRequireToWaitModules, {});
+
+                if (!ret.exports || ret.exports.constructor !== Object)
+                    console.warn("[require] " + path + " : Invalid exports. Should be simple object. Ignoring");
                 else self.setExports(ret.exports);
 
                 if (!ret.init || typeof ret.init !== "function")
@@ -338,14 +339,14 @@
                 else if (self.initFn != null && ret.init !== self.initFn)
                     throw new Error("'init' function in require and in definition not same");
                 else self.initFn = ret.init;
-                
+
             } else this.exports.text = this.bodyCode;
 
-            this._init();    
+            this.init();
         },
 
-        _init: function () {
-            if (this.isDone()) throw new Error("Already inited");
+        init: function () {
+            if (this.isDone()) return;
 
             var l = this.waitForModules.length;
 
@@ -359,7 +360,7 @@
 
             this.waiters = null;
 
-            for (var i=0;i<waiters.length;i++) {
+            for (var i = 0; i < waiters.length; i++) {
                 waiters[i](this);
             }
         }
